@@ -22,8 +22,10 @@ app.use('/', (req, res, next) => {
   const apiProxy = createProxyMiddleware({
     target: `${parsedUrl.protocol}//${parsedUrl.host}`,
     changeOrigin: true,
-    pathRewrite: {
-      [`^/${targetUrl.split('/').slice(0, 3).join('/')}`]: '', // 重写路径，移除目标域名部分
+    // 移除目标域名部分，保留路径
+    pathRewrite: (path, req) => {
+      const origin = `${parsedUrl.protocol}//${parsedUrl.host}`;
+      return path.startsWith(`/${origin}`) ? path.slice(origin.length + 1) : path;
     },
     onProxyReq: (proxyReq, req, res) => {
       // 移除所有隐私相关的请求头
