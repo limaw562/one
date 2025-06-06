@@ -4,29 +4,25 @@ const url = require('url');
 
 const app = express();
 
-// 中间件处理动态代理
-app.use('/', (req, res, next) => {
-  // 获取请求路径，去除开头的斜杠
-  const path = req.url.substring(1);
-  
-  // 检查路径是否是有效的URL
-  if (!path.startsWith('http://') && !path.startsWith('https://')) {
-    return res.status(400).send('闲人免进啊，兄弟！');
+// Cache for proxy instances
+const proxyCache = new Map();
+
+// Factory function to build or reuse proxy middleware
+function getProxyMiddleware(targetUrl) {
+  if (proxyCache.has(targetUrl)) {
+    return proxyCache.get(targetUrl);
   }
 
-  // 解析目标URL
-  const targetUrl = path;
   const parsedUrl = url.parse(targetUrl);
-  
-  // 创建动态代理
-  const apiProxy = createProxyMiddleware({
+  const prefixToRemove = `/${targetUrl.split('/').slice(0, 3).join('/')}`;
+
+  const middleware = createProxyMiddleware({
     target: `${parsedUrl.protocol}//${parsedUrl.host}`,
     changeOrigin: true,
     pathRewrite: {
-      [`^/${targetUrl.split('/').slice(0, 3).join('/')}`]: '', // 重写路径，移除目标域名部分
+      [`^${prefixToRemove}`]: '',
     },
     onProxyReq: (proxyReq, req, res) => {
-      // 移除所有隐私相关的请求头
       const privacyHeaders = [
         'x-forwarded-for',
         'x-real-ip',
@@ -50,7 +46,6 @@ app.use('/', (req, res, next) => {
       privacyHeaders.forEach((header) => proxyReq.removeHeader(header));
     },
     onProxyRes: (proxyRes, req, res) => {
-      // 移除所有隐私相关的响应头
       const privacyHeaders = [
         'x-powered-by',
         'server',
@@ -64,6 +59,23 @@ app.use('/', (req, res, next) => {
       privacyHeaders.forEach((header) => delete proxyRes.headers[header]);
     },
   });
+
+  proxyCache.set(targetUrl, middleware);
+  return middleware;
+}
+
+// Middleware handling dynamic proxy
+app.use('/', (req, res, next) => {
+  // 获取请求路径，去除开头的斜杠
+  const path = req.url.substring(1);
+  
+  // 检查路径是否是有效的URL
+  if (!path.startsWith('http://') && !path.startsWith('https://')) {
+    return res.status(400).send('闲人免进啊，兄弟！');
+  }
+
+  // 获取或创建代理中间件
+  const apiProxy = getProxyMiddleware(path);
 
   // 应用代理到当前请求
   return apiProxy(req, res, next);
