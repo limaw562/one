@@ -1,6 +1,5 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const url = require('url');
 
 const app = express();
 
@@ -16,7 +15,12 @@ app.use('/', (req, res, next) => {
 
   // 解析目标URL
   const targetUrl = path;
-  const parsedUrl = url.parse(targetUrl);
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(targetUrl);
+  } catch (err) {
+    return res.status(400).send('Invalid URL');
+  }
   
   // 创建动态代理
   const apiProxy = createProxyMiddleware({
